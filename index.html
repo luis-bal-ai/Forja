@@ -311,6 +311,15 @@ body.wk-open{overflow:hidden}
 .confetti{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:70}
 .sheet .seg{grid-template-columns:repeat(3,1fr)}
 
+.newscard{background:radial-gradient(120% 160% at 0% 0%,color-mix(in srgb,#59b8ff 18%,transparent),transparent 60%),var(--surface)}
+.nhead{font-family:var(--display);font-stretch:112%;font-weight:800;font-size:clamp(19px,4.6vw,24px);line-height:1.15;text-wrap:balance}
+.ntag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#59b8ff;margin-right:8px}
+.nitem-s{font-size:14px;line-height:1.35}
+.nitem h3{font-size:16px;margin:4px 0 6px;line-height:1.3}
+.nitem p{margin:0;color:color-mix(in srgb,var(--fg) 85%,var(--muted));line-height:1.55;max-width:62ch}
+.nsrc summary{cursor:pointer;color:var(--muted);font-size:13px}
+.nsrc ul{margin:8px 0 0;padding-left:18px;display:grid;gap:4px;font-size:13px}
+.nsrc a{color:var(--fg);overflow-wrap:anywhere}
 .toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(14px + env(safe-area-inset-top,0px));max-width:calc(100vw - 32px);text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.4);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:12px;font-weight:700;z-index:60;font-size:14px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -481,7 +490,7 @@ async function pushRemote(){if(!sb||!ME||!dirty)return;if(!navigator.onLine){set
 async function pullRemote(){if(!sb||!ME)return false;const{data,error}=await sb.from('user_state').select('data,updated_at').eq('user_id',ME.id).maybeSingle();if(error)throw error;
   if(!data)return null;const ts=Date.parse(data.updated_at);if(!S._ts||ts>S._ts+500||!S.sessions){const d=data.data;d._ts=ts;applyState(d);try{localStorage.setItem(cacheKey(),JSON.stringify(S))}catch(e){}return true}return false}
 window.addEventListener('online',()=>{if(dirty)pushRemote()});
-document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible'&&ME&&!dirty){try{if(await pullRemote())render()}catch(e){}}else if(document.visibilityState==='hidden'&&dirty){pushRemote()}});
+document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible'&&ME)loadNews();if(document.visibilityState==='visible'&&ME&&!dirty){try{if(await pullRemote())render()}catch(e){}}else if(document.visibilityState==='hidden'&&dirty){pushRemote()}});
 const ui={tab:'hoy',muscle:'espalda',exChart:'press_banca',openSess:null,confirm:null};
 try{const t=location.hash.slice(1);if(['hoy','entreno','habitos','finanzas'].includes(t))ui.tab=t}catch(e){}
 
@@ -622,6 +631,7 @@ function heroCard(){const L=loads();const recs=recommend(L);const rec=recs[0];
 function vHoy(){
   const t=dkey(Date.now());const hd=S.habits.filter(h=>h.done.includes(t)).length;const last=sortedSess()[0];
   return `<div class="grid g2">
+  ${newsCard()}
   ${heroCard()}
   <section class="card"><div class="card-h"><h2>Esta semana</h2><button class="chip" data-act="goalsheet">Objetivo: ${goalW()}/semana</button></div>
     <div class="row" style="gap:16px;margin-bottom:14px">${goalRing()}<div><div class="num" style="font-size:20px;font-weight:600">${goalStreak()} ${goalStreak()===1?'semana':'semanas'}</div><div class="muted" style="font-size:13px">de racha cumpliendo el objetivo</div></div></div>${weekStrip()}</section>
@@ -910,6 +920,24 @@ function vFinanzas(){ensureFin();
     <p class="muted" style="font-size:12px;margin:10px 0 0">Al borrar un extracto se quitan sus movimientos. Las categorías que me enseñaste se mantienen para la próxima vez.</p></section>
   </div>`}
 
+
+/* ---------- noticias ---------- */
+async function loadNews(){if(!sb||!ME)return;try{const{data,error}=await sb.from('daily_news').select('day,data').order('day',{ascending:false}).limit(14);if(error)throw error;ui.news=data||[];if(ui.tab==='hoy'&&!S.active)render();if(ui.sheet==='news')renderSheet()}catch(e){console.error(e)}}
+const newsRead=d=>{try{return localStorage.getItem('forja.news.'+d)==='1'}catch(e){return false}};
+const newsDay=d=>{const t=new Date(d+'T12:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'});return t[0].toUpperCase()+t.slice(1)};
+function newsCard(){const N=ui.news;if(!N||!N.length)return'';const n=N[0];const d=n.data||{};const today=n.day===dkey(Date.now());const unread=!newsRead(n.day);
+  return `<section class="card newscard" style="grid-column:1/-1"><div class="card-h" style="flex-wrap:wrap"><div class="row" style="gap:8px"><h2>${today?'Tu mañana':'Último resumen'}</h2>${unread?'<span class="pill p-acc">Nuevo</span>':''}</div><span class="muted" style="font-size:12px">${newsDay(n.day)}</span></div>
+  <div class="nhead">${esc(d.headline||'')}</div>
+  <div class="stack" style="gap:8px;margin:12px 0 14px">${(d.items||[]).slice(0,3).map(it=>`<div class="nitem-s"><span class="ntag">${esc(it.tag||'')}</span><b>${esc(it.title||'')}</b></div>`).join('')}</div>
+  <button class="btn" data-act="news" data-d="${n.day}">Leer resumen · ${(d.items||[]).length} noticias</button></section>`}
+function newsSheet(){const N=ui.news||[];const n=N.find(x=>x.day===ui.newsDay)||N[0];if(!n)return'';const d=n.data||{};try{localStorage.setItem('forja.news.'+n.day,'1')}catch(e){}
+  return `<div class="row" style="justify-content:space-between;align-items:flex-start"><div><span class="lbl">${newsDay(n.day)}</span><div class="nhead" style="margin-top:6px">${esc(d.headline||'')}</div></div><button class="x" data-act="close" aria-label="Cerrar">×</button></div>
+  <div class="stack" style="gap:16px">${(d.items||[]).map(it=>`<article class="nitem"><span class="ntag">${esc(it.tag||'')}</span><h3>${esc(it.title||'')}</h3><p>${esc(it.text||'')}</p></article>`).join('')}</div>
+  ${d.curious?`<div class="goalbox"><span class="lbl" style="color:var(--accent)">Dato curioso del día</span><p style="margin:4px 0 0">${esc(d.curious)}</p></div>`:''}
+  ${(d.sources||[]).length?`<details class="nsrc"><summary>Fuentes (${d.sources.length})</summary><ul>${d.sources.filter(x=>/^https?:\/\//.test(x.url||'')).map(x=>`<li><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title||x.url)}</a></li>`).join('')}</ul></details>`:''}
+  ${N.length>1?`<div><div class="lbl" style="margin-bottom:6px">Días anteriores</div><div class="chips hscroll">${N.map(x=>`<button class="chip" aria-pressed="${x.day===n.day}" data-act="news" data-d="${x.day}">${new Date(x.day+'T12:00').toLocaleDateString('es-ES',{weekday:'short',day:'numeric'})}</button>`).join('')}</div></div>`:''}`}
+document.addEventListener('click',ev=>{const b=ev.target.closest('[data-act=news]');if(!b)return;ui.newsDay=b.dataset.d;ui.sheet='news';renderSheet();document.querySelector('.sheet')?.scrollTo(0,0);if(ui.tab==='hoy')render()});
+
 /* ---------- hoja de registro ---------- */
 /* ---------- entreno en directo ---------- */
 let draft=null;
@@ -1118,7 +1146,7 @@ function renderSheet(){const el=document.getElementById('sheet');if(!ui.profile&
   <div class="row" style="flex-wrap:wrap"><button class="btn sm danger" data-act="wipe">${ui.confirm==='wipe'?'Toca otra vez: se borra todo':'Empezar de cero'}</button><button class="btn sm ghost" data-act="reseed">Cargar entrenos de ejemplo</button></div>
   <button class="btn ghost" data-act="logout">Cerrar sesión</button>
   <p class="muted" style="font-size:12px;margin:0">Para instalarla en el móvil: en iPhone, Safari → Compartir → «Añadir a pantalla de inicio». En Android, Chrome → menú ⋮ → «Instalar app».</p></div></div>`;return}
-  const f={pick:pickSheet,exd:exdSheet,finish:finishSheet,celebrate:celeSheet,chooser:chooserSheet,quick:quickSheet,goal:goalSheet}[ui.sheet];
+  const f={news:newsSheet,pick:pickSheet,exd:exdSheet,finish:finishSheet,celebrate:celeSheet,chooser:chooserSheet,quick:quickSheet,goal:goalSheet}[ui.sheet];
   const body=f?f():'';if(!body){ui.sheet=null;el.hidden=true;el.innerHTML='';return}
   el.innerHTML=`<div class="scrim" data-act="closebg"><div class="sheet sh-${ui.sheet}" role="dialog">${body}</div></div>`;
 }
@@ -1217,7 +1245,7 @@ let started=false;
 async function startApp(session){if(!session){ME=null;started=false;renderAuth();return}if(started&&ME?.id===session.user.id)return;ME=session.user;started=true;document.getElementById('splash')?.remove();
   let cached=null;try{cached=JSON.parse(localStorage.getItem(cacheKey()))}catch(e){}
   applyState(cached);
-  document.getElementById('auth').hidden=true;document.getElementById('app').hidden=false;document.getElementById('hdr').hidden=false;render();
+  document.getElementById('auth').hidden=true;document.getElementById('app').hidden=false;document.getElementById('hdr').hidden=false;render();loadNews();
   try{const r=await pullRemote();if(r===null){if(!cached){applyState(null)}S._ts=S._ts||Date.now();dirty=true;await pushRemote()}else if(r)render();if(cached&&dirty===false&&cached._ts&&r===false){dirty=true;pushRemote()}setSync(dirty?'saving':'ok')}
   catch(e){console.error(e);setSync(navigator.onLine?'error':'offline')}}
 async function boot(){if(!sb){renderAuth();return}
