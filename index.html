@@ -195,6 +195,12 @@ input[type=text],input[type=number],input[type=password],input[type=email]{backg
 .frow{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;background:none;border:0;border-bottom:1px solid var(--line);padding:8px 4px;font-size:14px;text-align:left;border-radius:0}
 .frow:last-child{border-bottom:0}
 .frow.on{background:var(--surface-2);border-radius:10px}
+.chev{color:var(--muted);font-size:11px;width:10px;text-align:center}
+.catpays{background:var(--surface-2);border-radius:12px;margin:4px 0 8px;padding:4px 10px;display:grid}
+.cprow{display:grid;grid-template-columns:48px 1fr auto;gap:10px;align-items:center;background:none;border:0;border-bottom:1px solid var(--line);padding:8px 0;text-align:left;width:100%;font-size:13px}
+.cprow:hover b{text-decoration:underline}
+.cpname{min-width:0;display:grid}.cpname b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cpname small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cpfoot{font-size:11px;padding:8px 0 6px}
 .ins{background:var(--surface-2);border-radius:14px;padding:11px 13px;display:grid;gap:4px}
 .mlist{display:grid}
 .mrow{display:grid;grid-template-columns:54px 1fr auto auto;gap:12px;align-items:center;background:none;border:0;border-bottom:1px solid var(--line);padding:10px 4px;text-align:left;width:100%}
@@ -669,7 +675,8 @@ function vFinanzas(){ensureFin();
   const bal=st.ing-st.gas-st.aho;
   const catList=Object.entries(st.cats).filter(([k,v])=>Math.abs(v)>.004).sort((a,b)=>b[1]-a[1]);const totPos=catList.reduce((a,[k,v])=>a+Math.max(0,v),0)||1;
   let acc=0;const R=52,C=2*Math.PI*R;const arcs=catList.filter(([k,v])=>v>0).map(([k,v])=>{const f=v/totPos;const s=`<circle cx="70" cy="70" r="${R}" fill="none" stroke="${FCATS[k]?.[1]||'var(--muted)'}" stroke-width="18" stroke-dasharray="${Math.max(0,C*f-1.5)} ${C}" stroke-dashoffset="${-C*acc}" transform="rotate(-90 70 70)"/>`;acc+=f;return s}).join('');
-  const list=st.tx.filter(t=>!ui.finCat||(ui.finCat==='_rev'?!t.kind&&t.amount<0||!t.kind:t.cat===ui.finCat&&(t.kind==='gasto'||t.kind==='reembolso'))).slice().reverse();
+  const list=st.tx.filter(t=>!ui.finRev||!t.kind).slice().reverse();
+  const inCat=k=>st.tx.filter(t=>k==='_rev'?(!t.kind&&t.amount<0):(t.cat===k&&(t.kind==='gasto'||t.kind==='reembolso'))).sort((a,b)=>b.date.localeCompare(a.date));
   const shown=ui.finAll?list:list.slice(0,25);
   const ins=insights(st,m);
   const delta=prev&&prev.gas?st.gas-prev.gas:null;
@@ -682,11 +689,11 @@ function vFinanzas(){ensureFin();
     <div class="statrow"><div class="stat"><span class="lbl">Ingresos</span><b style="color:var(--ok)">${eur(st.ing)}</b></div><div class="stat"><span class="lbl">Ahorro</span><b>${eur(st.aho)}</b></div><div class="stat"><span class="lbl">Te queda</span><b style="color:${bal>=0?'var(--ok)':'var(--bad)'}">${eur(bal)}</b></div></div>
   </section>
   <section class="card ${pendTot?'qcard':''}">${pendTot?`<div class="card-h"><h2>Te pregunto</h2><span class="pill p-warn">${pendTot} por revisar</span></div>${qCard(groups[0][1],false)}`:`<div class="card-h"><h2>Todo revisado</h2><span class="pill p-ok">Listo</span></div><p class="muted" style="margin:0">No queda nada por clasificar. Toca cualquier movimiento de abajo para cambiar su categoría.</p>`}</section>
-  <section class="card"><div class="card-h"><h2>En qué se va</h2>${ui.finCat?`<button class="chip" data-act="fcat" data-c="">Quitar filtro</button>`:''}</div>
+  <section class="card"><div class="card-h"><h2>En qué se va</h2><span class="muted" style="font-size:12px">Toca una categoría para ver sus pagos</span></div>
     ${catList.length?`<div class="row" style="gap:18px;flex-wrap:wrap;align-items:flex-start"><svg width="140" height="140" viewBox="0 0 140 140" aria-label="Reparto de gastos" style="flex:none">${arcs}<text x="70" y="68" text-anchor="middle" fill="var(--fg)" font-family="var(--mono)" font-size="16" font-weight="600">${fmt(st.gas)} €</text><text x="70" y="86" text-anchor="middle" fill="var(--muted)" font-size="10">gastado</text></svg>
-    <div style="flex:1;min-width:200px">${catList.map(([k,v])=>{const pv=prev?.cats[k]||0;return `<button class="frow${ui.finCat===k?' on':''}" data-act="fcat" data-c="${k}"><span class="row" style="gap:8px;min-width:0"><i class="sw" style="background:${FCATS[k]?.[1]}"></i><span>${FCATS[k]?.[0]||k}</span></span><span class="row" style="gap:10px">${prev?`<span class="num" style="font-size:11px;color:${v-pv>0?'var(--bad)':'var(--ok)'}">${v-pv>0?'+':''}${fmt(v-pv)}</span>`:''}<span class="num">${eur(v)}</span></span></button>`}).join('')}</div></div>`:'<p class="muted">Clasifica algunos movimientos y aquí verás el reparto.</p>'}</section>
+    <div style="flex:1;min-width:200px">${catList.map(([k,v])=>{const pv=prev?.cats[k]||0;return `<button class="frow${ui.finCat===k?' on':''}" data-act="fcat" data-c="${k}"><span class="row" style="gap:8px;min-width:0"><i class="sw" style="background:${FCATS[k]?.[1]}"></i><span>${FCATS[k]?.[0]||k}</span></span><span class="row" style="gap:10px">${prev?`<span class="num" style="font-size:11px;color:${v-pv>0?'var(--bad)':'var(--ok)'}">${v-pv>0?'+':''}${fmt(v-pv)}</span>`:''}<span class="num">${eur(v)}</span><span class="chev" aria-hidden="true">${ui.finCat===k?'▴':'▾'}</span></span></button>${ui.finCat===k?(()=>{const a=inCat(k);return `<div class="catpays">${a.map(t=>`<button class="cprow" data-act="fedit" data-id="${esc(t.id)}"><span class="num muted">${fdate(t.date)}</span><span class="cpname"><b>${esc(txName(t))}</b>${t.city||t.note||t.ref?`<small class="muted">${[t.city,t.ref?'«'+t.ref+'»':'',t.note].filter(Boolean).map(esc).join(' · ')}</small>`:''}</span><span class="num" style="color:${t.amount>0?'var(--ok)':'var(--fg)'}">${t.amount>0?'+':''}${eur(t.amount)}</span></button>`).join('')}<div class="cpfoot muted">${a.length} ${a.length===1?'pago':'pagos'}${a.some(t=>t.amount>0)?' · incluye devoluciones':''} · toca uno para cambiar su categoría</div></div>`})():''}`}).join('')}</div></div>`:'<p class="muted">Clasifica algunos movimientos y aquí verás el reparto.</p>'}</section>
   <section class="card"><div class="card-h"><h2>Lo que he visto</h2></div><div class="stack">${ins.map(([t,v,d])=>`<div class="ins"><div class="row" style="justify-content:space-between;gap:10px"><b>${t}</b><span class="num" style="color:var(--accent)">${v}</span></div><div class="muted" style="font-size:13px">${d}</div></div>`).join('')}</div></section>
-  <section class="card" style="grid-column:1/-1"><div class="card-h" style="flex-wrap:wrap"><h2>Movimientos${ui.finCat?` · ${ui.finCat==='_rev'?'por revisar':FCATS[ui.finCat]?.[0]}`:''}</h2><div class="chips"><button class="chip" aria-pressed="${ui.finCat==='_rev'}" data-act="fcat" data-c="${ui.finCat==='_rev'?'':'_rev'}">Por revisar</button></div></div>
+  <section class="card" style="grid-column:1/-1"><div class="card-h" style="flex-wrap:wrap"><h2>Movimientos${ui.finRev?' · por revisar':''}</h2><div class="chips"><button class="chip" aria-pressed="${!!ui.finRev}" data-act="frev">Por revisar</button></div></div>
     <div class="mlist">${shown.map(t=>`<button class="mrow" data-act="fedit" data-id="${esc(t.id)}"><span class="num muted mdate">${fdate(t.date)}</span><span class="mname"><b>${esc(txName(t))}</b><small class="muted">${[t.city,t.ref?'«'+t.ref+'»':'',t.note].filter(Boolean).map(esc).join(' · ')}</small></span><span class="mcat">${catChip(t)}</span><span class="num mamt" style="color:${t.amount>0?'var(--ok)':'var(--fg)'}">${t.amount>0?'+':''}${eur(t.amount)}</span></button>`).join('')||'<p class="muted">Nada aquí.</p>'}</div>
     ${list.length>25?`<button class="btn sm ghost" style="margin-top:10px" data-act="fall">${ui.finAll?'Ver menos':`Ver los ${list.length}`}</button>`:''}</section>
   <section class="card" style="grid-column:1/-1"><div class="card-h"><h2>Extractos importados</h2></div>
@@ -766,7 +773,8 @@ document.addEventListener('click',ev=>{
       const e={id:'c_'+uid(),name,p:[draft.filter],s:[],custom:true};EX.push(e);EXM[e.id]=e;S.customEx=S.customEx||[];S.customEx.push(e);save();
       draft.exercises.push({exId:e.id,sets:[{reps:10,kg:0},{reps:10,kg:0},{reps:10,kg:0}]});draft.q='';renderSheet();toast('Ejercicio guardado para próximos entrenos');break}
     case'logout':(async()=>{if(dirty)await pushRemote();await sb?.auth.signOut();try{localStorage.removeItem(cacheKey())}catch(e){}location.reload()})();break;
-    case'fmonth':ui.finMonth=b.dataset.m;ui.finCat=null;ui.finAll=false;render();break;
+    case'fmonth':ui.finMonth=b.dataset.m;ui.finCat=null;ui.finRev=false;ui.finAll=false;render();break;
+    case'frev':ui.finRev=!ui.finRev;ui.finAll=false;render();break;
     case'fcat':ui.finCat=ui.finCat===b.dataset.c?null:(b.dataset.c||null);ui.finAll=false;render();break;
     case'fdelimp':{const id=b.dataset.id;if(ui.confirm!=='imp:'+id){ui.confirm='imp:'+id;render();break}ui.confirm=null;
       const gone=t=>id.startsWith('m:')?(!t.imp&&mon(t)===id.slice(2)):t.imp===id;const before=S.fin.tx.length;S.fin.tx=S.fin.tx.filter(t=>!gone(t));
