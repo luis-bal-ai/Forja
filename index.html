@@ -516,7 +516,7 @@ const eur=n=>new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR'}).fo
 const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const monthName=m=>{const[y,mm]=m.split('-');return MESES[+mm-1]+' '+y};
 const mon=t=>(t.vdate||t.date).slice(0,7);
-function ensureFin(){S.fin=S.fin||{};const f=S.fin;f.tx=f.tx||[];f.rules=f.rules||{};f.people=f.people||{};f.notes=f.notes||[];f.holder=f.holder||''}
+function ensureFin(){S.fin=S.fin||{};const f=S.fin;f.tx=f.tx||[];f.rules=f.rules||{};f.people=f.people||{};f.notes=f.notes||[];f.holder=f.holder||'';f.imports=f.imports||[]}
 ensureFin();
 const DEF_RULES=[
  [/mercadona|carrefour|\baldi\b|^dia\b|supermarket|super al andalus|supermercado|carniceria|panaderia|\blidl\b|consum|alcampo|eroski|hipercor/,'gasto','super'],
@@ -593,9 +593,11 @@ async function importFile(file){
   if(res.holder&&!S.fin.holder)S.fin.holder=res.holder;
   for(const t of res.tx){t.bizum=/bizum/i.test(t.desc);if(t.bizum&&t.amount<0&&!t.who){const m=t.desc.match(/:\s*(.+)$/);if(m)t.who=m[1].trim()}if(t.bizum&&t.phone&&t.who&&t.amount<0)S.fin.people[t.phone]=t.who}
   const ids=new Set(S.fin.tx.map(t=>t.id));let added=0;
-  for(const t of res.tx){t.id=[t.date,t.desc,t.amount,t.bal].join('|');if(ids.has(t.id))continue;classify(t);S.fin.tx.push(t);added++}
+  const imp={id:uid(),name:file.name,at:new Date().toISOString(),count:0};
+  for(const t of res.tx){t.id=[t.date,t.desc,t.amount,t.bal].join('|');if(ids.has(t.id))continue;t.imp=imp.id;classify(t);S.fin.tx.push(t);added++}
+  imp.count=added;if(added)S.fin.imports.push(imp);
   const nk=new Set(S.fin.notes.map(n=>[n.type,n.date,n.desc,n.amount].join('|')));
-  for(const n of res.notes){const k=[n.type,n.date,n.desc,n.amount].join('|');if(!nk.has(k)){n.month=n.date.slice(0,7);S.fin.notes.push(n)}}
+  for(const n of res.notes){const k=[n.type,n.date,n.desc,n.amount].join('|');if(!nk.has(k)){n.month=n.date.slice(0,7);n.imp=imp.id;S.fin.notes.push(n)}}
   S.fin.tx.sort((a,b)=>a.date.localeCompare(b.date));
   const months=[...new Set(res.tx.map(mon))].sort();
   // el mes con más movimientos del archivo
@@ -649,6 +651,10 @@ function insights(st,month){const L=[];const exp=k=>st.tx.filter(t=>t.cat===k&&(
   const ng={};S.fin.notes.filter(n=>n.month===month).forEach(n=>{const k=[n.type,n.desc,n.amount].join('|');(ng[k]=ng[k]||[]).push(n)});
   Object.values(ng).forEach(a=>{const n=a[0],c=a.length;L.push([n.type==='pend'?'Pendiente de cobro':(c>1?'Cargos anulados':'Cargo anulado'),c>1?`${c} × ${eur(n.amount)}`:eur(n.amount),`${esc(n.desc)}, ${fdate(n.date)}. ${n.type==='pend'?'Aún no está en el saldo; entrará el mes que viene.':'Revolut los anuló, no cuentan como gasto.'}`])});
   return L}
+function impList(){const out=[];const live=new Set(S.fin.tx.map(t=>t.imp).filter(Boolean));
+  for(const i of S.fin.imports){if(!live.has(i.id))continue;const n=S.fin.tx.filter(t=>t.imp===i.id).length;const ms=[...new Set(S.fin.tx.filter(t=>t.imp===i.id).map(mon))].sort().map(monthName);out.push({id:i.id,name:i.name,sub:`${n} movimientos · ${ms.join(', ')} · subido el ${new Date(i.at).toLocaleDateString('es-ES',{day:'numeric',month:'short'})}`})}
+  const legacy=S.fin.tx.filter(t=>!t.imp);if(legacy.length){[...new Set(legacy.map(mon))].sort().forEach(m=>{const n=legacy.filter(t=>mon(t)===m).length;out.push({id:'m:'+m,name:'Extracto de '+monthName(m),sub:`${n} movimientos`})})}
+  return out}
 function vFinanzas(){ensureFin();
   const importer=`<input type="file" id="ffile" accept=".pdf,.csv,application/pdf,text/csv" hidden>`;
   if(!S.fin.tx.length)return `<div class="grid g2"><section class="card hero"><div class="lbl">Finanzas</div><div class="big" style="margin:8px 0 10px">Importa tu extracto</div>
@@ -683,6 +689,9 @@ function vFinanzas(){ensureFin();
   <section class="card" style="grid-column:1/-1"><div class="card-h" style="flex-wrap:wrap"><h2>Movimientos${ui.finCat?` · ${ui.finCat==='_rev'?'por revisar':FCATS[ui.finCat]?.[0]}`:''}</h2><div class="chips"><button class="chip" aria-pressed="${ui.finCat==='_rev'}" data-act="fcat" data-c="${ui.finCat==='_rev'?'':'_rev'}">Por revisar</button></div></div>
     <div class="mlist">${shown.map(t=>`<button class="mrow" data-act="fedit" data-id="${esc(t.id)}"><span class="num muted mdate">${fdate(t.date)}</span><span class="mname"><b>${esc(txName(t))}</b><small class="muted">${[t.city,t.ref?'«'+t.ref+'»':'',t.note].filter(Boolean).map(esc).join(' · ')}</small></span><span class="mcat">${catChip(t)}</span><span class="num mamt" style="color:${t.amount>0?'var(--ok)':'var(--fg)'}">${t.amount>0?'+':''}${eur(t.amount)}</span></button>`).join('')||'<p class="muted">Nada aquí.</p>'}</div>
     ${list.length>25?`<button class="btn sm ghost" style="margin-top:10px" data-act="fall">${ui.finAll?'Ver menos':`Ver los ${list.length}`}</button>`:''}</section>
+  <section class="card" style="grid-column:1/-1"><div class="card-h"><h2>Extractos importados</h2></div>
+    <div class="stack" style="gap:0">${impList().map(i=>`<div class="frow" style="cursor:default"><span style="min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(i.name)}</b><small class="muted">${i.sub}</small></span><button class="btn sm danger" data-act="fdelimp" data-id="${esc(i.id)}">${ui.confirm==='imp:'+i.id?'Toca otra vez para borrar':'Borrar'}</button></div>`).join('')}</div>
+    <p class="muted" style="font-size:12px;margin:10px 0 0">Al borrar un extracto se quitan sus movimientos. Las categorías que me enseñaste se mantienen para la próxima vez.</p></section>
   </div>`}
 
 /* ---------- hoja de registro ---------- */
@@ -737,7 +746,7 @@ function toast(t){const el=document.getElementById('toast');el.textContent=t;el.
 document.addEventListener('click',ev=>{
   const b=ev.target.closest('[data-act]');if(!b)return;const a=b.dataset.act;
   if(a==='closebg'&&ev.target!==b)return;
-  if(a!=='delsess'&&a!=='wipe')ui.confirm=null;
+  if(a!=='delsess'&&a!=='wipe'&&a!=='fdelimp')ui.confirm=null;
   switch(a){
     case'tab':ui.tab=b.dataset.t;try{history.replaceState(null,'','#'+ui.tab)}catch(e){}render();scrollTo(0,0);break;
     case'muscle':ui.muscle=b.dataset.m;render();break;
@@ -759,6 +768,10 @@ document.addEventListener('click',ev=>{
     case'logout':(async()=>{if(dirty)await pushRemote();await sb?.auth.signOut();try{localStorage.removeItem(cacheKey())}catch(e){}location.reload()})();break;
     case'fmonth':ui.finMonth=b.dataset.m;ui.finCat=null;ui.finAll=false;render();break;
     case'fcat':ui.finCat=ui.finCat===b.dataset.c?null:(b.dataset.c||null);ui.finAll=false;render();break;
+    case'fdelimp':{const id=b.dataset.id;if(ui.confirm!=='imp:'+id){ui.confirm='imp:'+id;render();break}ui.confirm=null;
+      const gone=t=>id.startsWith('m:')?(!t.imp&&mon(t)===id.slice(2)):t.imp===id;const before=S.fin.tx.length;S.fin.tx=S.fin.tx.filter(t=>!gone(t));
+      S.fin.notes=S.fin.notes.filter(n=>id.startsWith('m:')?!(!n.imp&&n.month===id.slice(2)):n.imp!==id);S.fin.imports=S.fin.imports.filter(i=>i.id!==id);
+      ui.finCat=null;ui.finAll=false;save();render();toast(`Extracto borrado · ${before-S.fin.tx.length} movimientos`);break}
     case'fall':ui.finAll=!ui.finAll;render();break;
     case'fedit':ui.finEdit=b.dataset.id;renderSheet();break;
     case'fskip':{const g=reviewGroups();if(g.length){ui.finSkip=(ui.finSkip||[]).filter(k=>k!==g[0][0]);ui.finSkip.push(g[0][0])}render();break}
