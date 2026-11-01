@@ -320,6 +320,13 @@ body.wk-open{overflow:hidden}
 .nsrc summary{cursor:pointer;color:var(--muted);font-size:13px}
 .nsrc ul{margin:8px 0 0;padding-left:18px;display:grid;gap:4px;font-size:13px}
 .nsrc a{color:var(--fg);overflow-wrap:anywhere}
+.mkcard{background:radial-gradient(120% 160% at 100% 0%,color-mix(in srgb,var(--ok) 16%,transparent),transparent 60%),var(--surface)}
+.mkrow{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 14px}
+.mkchip{font-size:12px;padding:5px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line)}
+.mkchip.hot{border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}
+.mkitem{background:var(--surface-2);border-radius:14px;padding:12px;display:grid;gap:6px;font-size:14px}
+.mkitem.hot{border:1px solid color-mix(in srgb,var(--bad) 30%,transparent)}
+.mkitem p{margin:0;line-height:1.5}
 .toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(14px + env(safe-area-inset-top,0px));max-width:calc(100vw - 32px);text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.4);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:12px;font-weight:700;z-index:60;font-size:14px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -490,7 +497,7 @@ async function pushRemote(){if(!sb||!ME||!dirty)return;if(!navigator.onLine){set
 async function pullRemote(){if(!sb||!ME)return false;const{data,error}=await sb.from('user_state').select('data,updated_at').eq('user_id',ME.id).maybeSingle();if(error)throw error;
   if(!data)return null;const ts=Date.parse(data.updated_at);if(!S._ts||ts>S._ts+500||!S.sessions){const d=data.data;d._ts=ts;applyState(d);try{localStorage.setItem(cacheKey(),JSON.stringify(S))}catch(e){}return true}return false}
 window.addEventListener('online',()=>{if(dirty)pushRemote()});
-document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible'&&ME)loadNews();if(document.visibilityState==='visible'&&ME&&!dirty){try{if(await pullRemote())render()}catch(e){}}else if(document.visibilityState==='hidden'&&dirty){pushRemote()}});
+document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible'&&ME){loadNews();loadMarkets()}if(document.visibilityState==='visible'&&ME&&!dirty){try{if(await pullRemote())render()}catch(e){}}else if(document.visibilityState==='hidden'&&dirty){pushRemote()}});
 const ui={tab:'hoy',muscle:'espalda',exChart:'press_banca',openSess:null,confirm:null};
 try{const t=location.hash.slice(1);if(['hoy','entreno','habitos','finanzas'].includes(t))ui.tab=t}catch(e){}
 
@@ -882,7 +889,7 @@ function impList(){const out=[];const live=new Set(S.fin.tx.map(t=>t.imp).filter
   return out}
 function vFinanzas(){ensureFin();
   const importer=`<input type="file" id="ffile" accept=".pdf,.csv,application/pdf,text/csv" hidden>`;
-  if(!S.fin.tx.length)return `<div class="grid g2"><section class="card hero"><div class="lbl">Finanzas</div><div class="big" style="margin:8px 0 10px">Importa tu extracto</div>
+  if(!S.fin.tx.length)return `<div class="grid g2">${marketsCard()}<section class="card hero"><div class="lbl">Finanzas</div><div class="big" style="margin:8px 0 10px">Importa tu extracto</div>
     <p class="muted" style="margin:0 0 14px;max-width:52ch">Sube el extracto de Revolut en PDF o CSV. Lo clasifico solo y te pregunto lo que no sepa: Bizums, comercios raros y cosas que no cuadran.</p>
     ${ui.finBusy?'<div class="btn" aria-busy="true">Leyendo extracto…</div>':`<label class="btn" for="ffile" tabindex="0" role="button">Importar extracto</label>`}${importer}
     ${ui.finErr?`<p style="color:var(--bad);margin:12px 0 0">${esc(ui.finErr)}</p>`:''}
@@ -900,6 +907,7 @@ function vFinanzas(){ensureFin();
   const ins=insights(st,m);
   const delta=prev&&prev.gas?st.gas-prev.gas:null;
   return `<div class="grid g2">
+  ${marketsCard()}
   <section class="card hero"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><div class="chips">${months.map(x=>`<button class="chip" aria-pressed="${x===m}" data-act="fmonth" data-m="${x}">${monthName(x)}</button>`).join('')}</div>
       ${ui.finBusy?'<span class="muted">Leyendo…</span>':`<label class="btn sm ghost" for="ffile" tabindex="0" role="button">Importar otro mes</label>`}${importer}</div>
     ${ui.finErr?`<p style="color:var(--bad);margin:10px 0 0">${esc(ui.finErr)}</p>`:''}
@@ -937,6 +945,27 @@ function newsSheet(){const N=ui.news||[];const n=N.find(x=>x.day===ui.newsDay)||
   ${(d.sources||[]).length?`<details class="nsrc"><summary>Fuentes (${d.sources.length})</summary><ul>${d.sources.filter(x=>/^https?:\/\//.test(x.url||'')).map(x=>`<li><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title||x.url)}</a></li>`).join('')}</ul></details>`:''}
   ${N.length>1?`<div><div class="lbl" style="margin-bottom:6px">Días anteriores</div><div class="chips hscroll">${N.map(x=>`<button class="chip" aria-pressed="${x.day===n.day}" data-act="news" data-d="${x.day}">${new Date(x.day+'T12:00').toLocaleDateString('es-ES',{weekday:'short',day:'numeric'})}</button>`).join('')}</div></div>`:''}`}
 document.addEventListener('click',ev=>{const b=ev.target.closest('[data-act=news]');if(!b)return;ui.newsDay=b.dataset.d;ui.sheet='news';renderSheet();document.querySelector('.sheet')?.scrollTo(0,0);if(ui.tab==='hoy')render()});
+
+
+/* ---------- radar de mercados ---------- */
+async function loadMarkets(){if(!sb||!ME)return;try{const{data,error}=await sb.from('weekly_markets').select('week,data').order('week',{ascending:false}).limit(8);if(error)throw error;ui.markets=data||[];if(ui.tab==='finanzas'&&!S.active)render();if(ui.sheet==='markets')renderSheet()}catch(e){console.error(e)}}
+const mkRead=w=>{try{return localStorage.getItem('forja.mk.'+w)==='1'}catch(e){return false}};
+const weekLabel=w=>'Semana del '+new Date(w+'T12:00').toLocaleDateString('es-ES',{day:'numeric',month:'long'});
+function marketsCard(){const M=ui.markets;if(!M||!M.length)return'';const m=M[0];const d=m.data||{};
+  return `<section class="card mkcard" style="grid-column:1/-1"><div class="card-h" style="flex-wrap:wrap"><div class="row" style="gap:8px"><h2>Radar del lunes</h2>${mkRead(m.week)?'':'<span class="pill p-acc">Nuevo</span>'}</div><span class="muted" style="font-size:12px">${weekLabel(m.week)}</span></div>
+  <div class="nhead">${esc(d.headline||'')}</div>
+  <div class="mkrow">${(d.etfs||[]).slice(0,3).map(e=>`<span class="mkchip"><b>${esc(e.ticker||e.name||'')}</b>${e.perf?` <span class="muted">${esc(e.perf)}</span>`:''}</span>`).join('')}${(d.watch||[]).slice(0,2).map(w=>`<span class="mkchip hot"><b>${esc(w.ticker||w.name||'')}</b> <span class="muted">${esc(w.date||'')}</span></span>`).join('')}</div>
+  <button class="btn" data-act="markets" data-w="${m.week}">Ver radar</button></section>`}
+function marketsSheet(){const M=ui.markets||[];const m=M.find(x=>x.week===ui.mkWeek)||M[0];if(!m)return'';const d=m.data||{};try{localStorage.setItem('forja.mk.'+m.week,'1')}catch(e){}
+  return `<div class="row" style="justify-content:space-between;align-items:flex-start"><div><span class="lbl">${weekLabel(m.week)}</span><div class="nhead" style="margin-top:6px">${esc(d.headline||'')}</div></div><button class="x" data-act="close" aria-label="Cerrar">×</button></div>
+  ${d.summary?`<p style="margin:0;line-height:1.55">${esc(d.summary)}</p>`:''}
+  ${(d.etfs||[]).length?`<div><div class="lbl" style="margin-bottom:8px">ETFs para tener en el radar</div><div class="stack" style="gap:8px">${d.etfs.map(e=>`<article class="mkitem"><div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start"><div style="min-width:0"><b>${esc(e.name||'')}</b><div class="muted num" style="font-size:12px">${[e.ticker,e.isin,e.ter?'Comisión '+e.ter:''].filter(Boolean).map(esc).join(' · ')}</div></div>${e.perf?`<span class="pill p-ok" style="white-space:nowrap">${esc(e.perf)}</span>`:''}</div><p>${esc(e.what||'')}</p>${e.why?`<p class="muted">${esc(e.why)}</p>`:''}</article>`).join('')}</div></div>`:''}
+  ${(d.watch||[]).length?`<div><div class="lbl" style="margin-bottom:8px">Empresas con evento esta semana</div><div class="stack" style="gap:8px">${d.watch.map(w=>`<article class="mkitem hot"><div class="row" style="justify-content:space-between;gap:8px;align-items:flex-start"><div style="min-width:0"><b>${esc(w.name||'')}</b><div class="muted num" style="font-size:12px">${[w.ticker,w.date].filter(Boolean).map(esc).join(' · ')}</div></div><span class="pill p-bad" style="white-space:nowrap">Riesgo ${esc(w.risk||'alto')}</span></div><p><b>Qué pasa:</b> ${esc(w.catalyst||'')}</p>${w.bull?`<p><span style="color:var(--ok);font-weight:700">Si sale bien:</span> ${esc(w.bull)}</p>`:''}${w.bear?`<p><span style="color:var(--bad);font-weight:700">Si sale mal:</span> ${esc(w.bear)}</p>`:''}</article>`).join('')}</div></div>`:''}
+  ${(d.agenda||[]).length?`<div><div class="lbl" style="margin-bottom:6px">Agenda de la semana</div><div class="stack" style="gap:0">${d.agenda.map(a=>`<div class="frow" style="cursor:default"><span class="muted num" style="font-size:12px;white-space:nowrap">${esc(a.date||'')}</span><span style="font-size:13px;text-align:right">${esc(a.event||'')}</span></div>`).join('')}</div></div>`:''}
+  <p class="muted" style="font-size:12px;margin:0">Información para que decidas tú, no una recomendación de inversión. Las empresas con eventos pueden subir o bajar mucho en un día. Invierte solo lo que puedas permitirte perder.</p>
+  ${(d.sources||[]).length?`<details class="nsrc"><summary>Fuentes (${d.sources.length})</summary><ul>${d.sources.filter(x=>/^https?:\/\//.test(x.url||'')).map(x=>`<li><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title||x.url)}</a></li>`).join('')}</ul></details>`:''}
+  ${M.length>1?`<div class="chips hscroll">${M.map(x=>`<button class="chip" aria-pressed="${x.week===m.week}" data-act="markets" data-w="${x.week}">${new Date(x.week+'T12:00').toLocaleDateString('es-ES',{day:'numeric',month:'short'})}</button>`).join('')}</div>`:''}`}
+document.addEventListener('click',ev=>{const b=ev.target.closest('[data-act=markets]');if(!b)return;ui.mkWeek=b.dataset.w;ui.sheet='markets';renderSheet();document.querySelector('.sheet')?.scrollTo(0,0);if(ui.tab==='finanzas')render()});
 
 /* ---------- hoja de registro ---------- */
 /* ---------- entreno en directo ---------- */
@@ -1146,7 +1175,7 @@ function renderSheet(){const el=document.getElementById('sheet');if(!ui.profile&
   <div class="row" style="flex-wrap:wrap"><button class="btn sm danger" data-act="wipe">${ui.confirm==='wipe'?'Toca otra vez: se borra todo':'Empezar de cero'}</button><button class="btn sm ghost" data-act="reseed">Cargar entrenos de ejemplo</button></div>
   <button class="btn ghost" data-act="logout">Cerrar sesión</button>
   <p class="muted" style="font-size:12px;margin:0">Para instalarla en el móvil: en iPhone, Safari → Compartir → «Añadir a pantalla de inicio». En Android, Chrome → menú ⋮ → «Instalar app».</p></div></div>`;return}
-  const f={news:newsSheet,pick:pickSheet,exd:exdSheet,finish:finishSheet,celebrate:celeSheet,chooser:chooserSheet,quick:quickSheet,goal:goalSheet}[ui.sheet];
+  const f={markets:marketsSheet,news:newsSheet,pick:pickSheet,exd:exdSheet,finish:finishSheet,celebrate:celeSheet,chooser:chooserSheet,quick:quickSheet,goal:goalSheet}[ui.sheet];
   const body=f?f():'';if(!body){ui.sheet=null;el.hidden=true;el.innerHTML='';return}
   el.innerHTML=`<div class="scrim" data-act="closebg"><div class="sheet sh-${ui.sheet}" role="dialog">${body}</div></div>`;
 }
@@ -1245,7 +1274,7 @@ let started=false;
 async function startApp(session){if(!session){ME=null;started=false;renderAuth();return}if(started&&ME?.id===session.user.id)return;ME=session.user;started=true;document.getElementById('splash')?.remove();
   let cached=null;try{cached=JSON.parse(localStorage.getItem(cacheKey()))}catch(e){}
   applyState(cached);
-  document.getElementById('auth').hidden=true;document.getElementById('app').hidden=false;document.getElementById('hdr').hidden=false;render();loadNews();
+  document.getElementById('auth').hidden=true;document.getElementById('app').hidden=false;document.getElementById('hdr').hidden=false;render();loadNews();loadMarkets();
   try{const r=await pullRemote();if(r===null){if(!cached){applyState(null)}S._ts=S._ts||Date.now();dirty=true;await pushRemote()}else if(r)render();if(cached&&dirty===false&&cached._ts&&r===false){dirty=true;pushRemote()}setSync(dirty?'saving':'ok')}
   catch(e){console.error(e);setSync(navigator.onLine?'error':'offline')}}
 async function boot(){if(!sb){renderAuth();return}
