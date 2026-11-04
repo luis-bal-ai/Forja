@@ -327,6 +327,14 @@ body.wk-open{overflow:hidden}
 .mkitem{background:var(--surface-2);border-radius:14px;padding:12px;display:grid;gap:6px;font-size:14px}
 .mkitem.hot{border:1px solid color-mix(in srgb,var(--bad) 30%,transparent)}
 .mkitem p{margin:0;line-height:1.5}
+.remform{display:grid;grid-template-columns:1fr auto;gap:8px}
+.remrow{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;background:var(--surface-2);border-radius:12px;padding:8px 10px}
+.remrow .rchk{width:30px;height:30px;border-radius:9px}
+.remrow .rchk svg{width:16px;height:16px}
+.remrow.done .rtxt{text-decoration:line-through;color:var(--muted)}
+.rtxt{min-width:0;overflow-wrap:anywhere;font-size:14px}
+.remdate{position:relative;cursor:pointer}
+.remdate input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
 .toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(14px + env(safe-area-inset-top,0px));max-width:calc(100vw - 32px);text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.4);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:12px;font-weight:700;z-index:60;font-size:14px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -497,7 +505,7 @@ async function pushRemote(){if(!sb||!ME||!dirty)return;if(!navigator.onLine){set
 async function pullRemote(){if(!sb||!ME)return false;const{data,error}=await sb.from('user_state').select('data,updated_at').eq('user_id',ME.id).maybeSingle();if(error)throw error;
   if(!data)return null;const ts=Date.parse(data.updated_at);if(!S._ts||ts>S._ts+500||!S.sessions){const d=data.data;d._ts=ts;applyState(d);try{localStorage.setItem(cacheKey(),JSON.stringify(S))}catch(e){}return true}return false}
 window.addEventListener('online',()=>{if(dirty)pushRemote()});
-document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible'&&ME){loadNews();loadMarkets()}if(document.visibilityState==='visible'&&ME&&!dirty){try{if(await pullRemote())render()}catch(e){}}else if(document.visibilityState==='hidden'&&dirty){pushRemote()}});
+document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible'&&ME){loadNews();loadMarkets();loadRem()}if(document.visibilityState==='visible'&&ME&&!dirty){try{if(await pullRemote())render()}catch(e){}}else if(document.visibilityState==='hidden'&&dirty){pushRemote()}});
 const ui={tab:'hoy',muscle:'espalda',exChart:'press_banca',openSess:null,confirm:null};
 try{const t=location.hash.slice(1);if(['hoy','entreno','habitos','finanzas'].includes(t))ui.tab=t}catch(e){}
 
@@ -639,6 +647,7 @@ function vHoy(){
   const t=dkey(Date.now());const hd=S.habits.filter(h=>h.done.includes(t)).length;const last=sortedSess()[0];
   return `<div class="grid g2">
   ${newsCard()}
+  ${remCard()}
   ${heroCard()}
   <section class="card"><div class="card-h"><h2>Esta semana</h2><button class="chip" data-act="goalsheet">Objetivo: ${goalW()}/semana</button></div>
     <div class="row" style="gap:16px;margin-bottom:14px">${goalRing()}<div><div class="num" style="font-size:20px;font-weight:600">${goalStreak()} ${goalStreak()===1?'semana':'semanas'}</div><div class="muted" style="font-size:13px">de racha cumpliendo el objetivo</div></div></div>${weekStrip()}</section>
@@ -967,6 +976,33 @@ function marketsSheet(){const M=ui.markets||[];const m=M.find(x=>x.week===ui.mkW
   ${M.length>1?`<div class="chips hscroll">${M.map(x=>`<button class="chip" aria-pressed="${x.week===m.week}" data-act="markets" data-w="${x.week}">${new Date(x.week+'T12:00').toLocaleDateString('es-ES',{day:'numeric',month:'short'})}</button>`).join('')}</div>`:''}`}
 document.addEventListener('click',ev=>{const b=ev.target.closest('[data-act=markets]');if(!b)return;ui.mkWeek=b.dataset.w;ui.sheet='markets';renderSheet();document.querySelector('.sheet')?.scrollTo(0,0);if(ui.tab==='finanzas')render()});
 
+
+/* ---------- recordatorios ---------- */
+const addDays=n=>dkey(Date.now()+n*DAY);
+async function loadRem(){if(!sb||!ME)return;try{const{data,error}=await sb.from('reminders').select('id,text,remind_on,done').gte('remind_on',addDays(-7)).order('remind_on').order('created_at');if(error)throw error;ui.rem=data||[];if(ui.tab==='hoy'&&!S.active)render()}catch(e){console.error(e)}}
+const remDayName=d=>d===dkey(Date.now())?'Hoy':d===addDays(1)?'Mañana':d===addDays(2)?'Pasado mañana':new Date(d+'T12:00').toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'short'});
+function remCard(){const R=ui.rem||[];const today=dkey(Date.now());const now=R.filter(r=>r.remind_on<=today&&(!r.done||r.remind_on===today));const next=R.filter(r=>r.remind_on>today);const when=ui.remWhen||addDays(1);
+  const row=r=>`<div class="remrow${r.done?' done':''}"><button class="check rchk" aria-pressed="${r.done}" aria-label="Hecho" data-act="remdone" data-id="${r.id}">${I.check}</button><span class="rtxt">${esc(r.text)}${r.remind_on<today?` <small class="muted">· de ${remDayName(r.remind_on).toLowerCase()}</small>`:''}</span><button class="x" data-act="remdel" data-id="${r.id}" aria-label="Borrar">×</button></div>`;
+  return `<section class="card remcard"><div class="card-h"><h2>Recordatorios</h2>${now.filter(r=>!r.done).length?`<span class="pill p-warn">${now.filter(r=>!r.done).length} para hoy</span>`:''}</div>
+  <form class="remform" data-form="rem"><input type="text" id="remin" maxlength="500" placeholder="¿Qué quieres que te recuerde?" aria-label="Nuevo recordatorio" autocomplete="off"><button class="btn sm">Añadir</button></form>
+  <div class="chips" style="margin:8px 0 4px">${[[addDays(1),'Mañana'],[addDays(2),'Pasado mañana']].map(([d,n])=>`<button class="chip" aria-pressed="${when===d}" data-act="remwhen" data-d="${d}">${n}</button>`).join('')}<label class="chip remdate" aria-pressed="${when>addDays(2)}">${when>addDays(2)?remDayName(when):'Otro día'}<input type="date" id="remdate" min="${addDays(1)}" value="${when}" aria-label="Elegir día"></label></div>
+  <p class="muted" style="font-size:12px;margin:4px 0 10px">Te llegará la notificación ese día a las 7:40.</p>
+  ${now.length?`<div class="lbl" style="margin:6px 0">Hoy</div><div class="stack" style="gap:6px">${now.map(row).join('')}</div>`:''}
+  ${next.length?`<div class="lbl" style="margin:12px 0 6px">Próximos</div><div class="stack" style="gap:6px">${next.map(r=>row(r).replace('<span class="rtxt">',`<span class="rtxt"><small class="ntag" style="color:var(--accent)">${remDayName(r.remind_on)}</small> `)).join('')}</div>`:''}
+  ${!now.length&&!next.length?'<p class="muted" style="margin:0">Nada pendiente. Apunta lo que no quieras olvidar mañana.</p>':''}</section>`}
+async function remAdd(){const inp=document.getElementById('remin');const text=(inp?.value||'').trim();if(!text){inp?.focus();return}if(!sb||!ME)return;
+  const day=ui.remWhen||addDays(1);const tmp={id:'tmp'+uid(),text,remind_on:day,done:false};ui.rem=[...(ui.rem||[]),tmp];render();document.getElementById('remin')?.focus();
+  const{data,error}=await sb.from('reminders').insert({user_id:ME.id,text,remind_on:day}).select('id,text,remind_on,done').single();
+  if(error){ui.rem=ui.rem.filter(r=>r!==tmp);render();toast('No se ha podido guardar. Revisa la conexión.');return}
+  Object.assign(tmp,data);toast(`Te lo recuerdo ${remDayName(day).toLowerCase()} a las 7:40`)}
+document.addEventListener('click',async ev=>{const b=ev.target.closest('[data-act^=rem]');if(!b)return;const a=b.dataset.act;
+  if(a==='remwhen'){ui.remWhen=b.dataset.d;const v=document.getElementById('remin')?.value;render();const i=document.getElementById('remin');if(i&&v)i.value=v;return}
+  const r=(ui.rem||[]).find(x=>x.id===b.dataset.id);if(!r||String(r.id).startsWith('tmp'))return;
+  if(a==='remdone'){r.done=!r.done;render();const{error}=await sb.from('reminders').update({done:r.done}).eq('id',r.id);if(error){r.done=!r.done;render();toast('No se ha podido guardar')}}
+  if(a==='remdel'){ui.rem=ui.rem.filter(x=>x!==r);render();const{error}=await sb.from('reminders').delete().eq('id',r.id);if(error){ui.rem.push(r);render();toast('No se ha podido borrar')}}});
+document.addEventListener('change',ev=>{if(ev.target.id==='remdate'&&ev.target.value){ui.remWhen=ev.target.value<addDays(1)?addDays(1):ev.target.value;const v=document.getElementById('remin')?.value;render();const i=document.getElementById('remin');if(i&&v)i.value=v}});
+document.addEventListener('submit',ev=>{if(ev.target.dataset.form==='rem'){ev.preventDefault();ev.stopImmediatePropagation();remAdd()}},true);
+
 /* ---------- hoja de registro ---------- */
 /* ---------- entreno en directo ---------- */
 let draft=null;
@@ -1274,7 +1310,7 @@ let started=false;
 async function startApp(session){if(!session){ME=null;started=false;renderAuth();return}if(started&&ME?.id===session.user.id)return;ME=session.user;started=true;document.getElementById('splash')?.remove();
   let cached=null;try{cached=JSON.parse(localStorage.getItem(cacheKey()))}catch(e){}
   applyState(cached);
-  document.getElementById('auth').hidden=true;document.getElementById('app').hidden=false;document.getElementById('hdr').hidden=false;render();loadNews();loadMarkets();
+  document.getElementById('auth').hidden=true;document.getElementById('app').hidden=false;document.getElementById('hdr').hidden=false;render();loadNews();loadMarkets();loadRem();
   try{const r=await pullRemote();if(r===null){if(!cached){applyState(null)}S._ts=S._ts||Date.now();dirty=true;await pushRemote()}else if(r)render();if(cached&&dirty===false&&cached._ts&&r===false){dirty=true;pushRemote()}setSync(dirty?'saving':'ok')}
   catch(e){console.error(e);setSync(navigator.onLine?'error':'offline')}}
 async function boot(){if(!sb){renderAuth();return}
